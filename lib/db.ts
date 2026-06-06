@@ -27,6 +27,13 @@ function runParallelTracksMigration(db: Database.Database) {
     if (alreadyRun) return;
   } catch { return; }
 
+  // If the state column was already dropped (by dropDeprecatedRunProfileColumns),
+  // this migration can't backfill and isn't needed — run_profiles is already migrated.
+  try {
+    const cols = db.prepare("PRAGMA table_info(run_profiles)").all() as { name: string }[];
+    if (!cols.some(c => c.name === "state")) return;
+  } catch { return; }
+
   db.transaction(() => {
     // 1. Assign email step_type rows to the email track
     db.exec("UPDATE workflow_steps SET track = 'email' WHERE step_type = 'email'");
