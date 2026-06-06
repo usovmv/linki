@@ -11,6 +11,25 @@ const contexts: Map<string, BrowserContext> = new Map();
 const HEADLESS = process.env.HEADLESS !== "false";
 const CHROMIUM_PATH = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 
+function getProxyConfig(): { server: string; username?: string; password?: string } | undefined {
+  const raw = process.env.LINKI_PROXY;
+  if (!raw) return undefined;
+
+  try {
+    const url = new URL(raw);
+    const server = `${url.protocol}//${url.hostname}:${url.port || (url.protocol === "https:" ? "443" : "80")}`;
+    const username = url.username || undefined;
+    const password = url.password || undefined;
+    return username ? { server, username, password } : { server };
+  } catch {
+    // Plain host:port without protocol — assume http
+    const match = raw.match(/^(.+):(\d+)$/);
+    if (match) return { server: `http://${match[1]}:${match[2]}` };
+    console.warn(`[session] Invalid LINKI_PROXY format: ${raw} — expected http://host:port or http://user:pass@host:port`);
+    return undefined;
+  }
+}
+
 async function getBrowser(headless = HEADLESS): Promise<Browser> {
   if (!browser || !browser.isConnected()) {
     browser = await chromium.launch({
@@ -47,6 +66,7 @@ async function getOrCreateContext(accountId: string): Promise<BrowserContext> {
       }
     }
 
+    const proxy = getProxyConfig();
     const ctx = await b.newContext({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       storageState: storageState as any,
@@ -56,7 +76,9 @@ async function getOrCreateContext(accountId: string): Promise<BrowserContext> {
       locale: "en-US",
       timezoneId: "America/New_York",
       permissions: ["clipboard-read", "clipboard-write"],
+      ...(proxy ? { proxy } : {}),
     });
+    if (proxy) console.log(`[session] Using proxy ${proxy.server} for account ${accountId}`);
 
     // Auto-evict from map when context closes for any reason (crash, session expiry, etc.)
     ctx.on("close", () => { if (contexts.get(accountId) === ctx) contexts.delete(accountId); });
@@ -138,13 +160,16 @@ export async function authenticateAccount(accountId: string): Promise<void> {
   });
 
   try {
+    const proxy = getProxyConfig();
     const ctx = await visibleBrowser.newContext({
       viewport: { width: 1440, height: 900 },
       userAgent:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
       locale: "en-US",
       timezoneId: "America/New_York",
+      ...(proxy ? { proxy } : {}),
     });
+    if (proxy) console.log(`[session] Using proxy ${proxy.server} for manual auth`);
 
     const page = await ctx.newPage();
     await page.goto("https://www.linkedin.com/login");
