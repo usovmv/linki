@@ -106,6 +106,7 @@ export default function AccountDetailPage({ account: initial }: { account: Accou
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authForm, setAuthForm] = useState({ li_at: "", document_cookie: "" });
   const [authing, setAuthing] = useState(false);
+  const [browserAuthing, setBrowserAuthing] = useState(false);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -170,6 +171,24 @@ export default function AccountDetailPage({ account: initial }: { account: Accou
     setIsAuth(true);
     setShowAuthModal(false);
     setAuthForm({ li_at: "", document_cookie: "" });
+  }
+
+  async function startBrowserAuth() {
+    setBrowserAuthing(true);
+    try {
+      const res = await fetch(`/api/accounts/${initial.id}/authenticate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "browser" }),
+      });
+      if (!res.ok) { toast.error((await res.json()).error ?? "Browser authentication failed"); return; }
+      toast.success("Account authenticated via browser login");
+      setIsAuth(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Browser authentication failed");
+    } finally {
+      setBrowserAuthing(false);
+    }
   }
 
   async function deleteAccount() {
@@ -357,11 +376,19 @@ export default function AccountDetailPage({ account: initial }: { account: Accou
           <div className="flex items-center gap-2">
             <button
               type="button"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-success/10 text-success border border-success/20 hover:bg-success/20 transition-colors disabled:opacity-50"
+              onClick={startBrowserAuth}
+              disabled={browserAuthing}
+            >
+              {browserAuthing ? <span className="loading loading-spinner loading-xs" /> : <RiShieldCheckLine size={14} />}
+              {browserAuthing ? "Opening browser…" : "Browser Login"}
+            </button>
+            <button
+              type="button"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-base-300/60 text-base-content/70 hover:bg-base-300 transition-colors"
               onClick={() => { setAuthForm({ li_at: "", document_cookie: "" }); setShowAuthModal(true); }}
             >
-              <RiShieldCheckLine size={14} />
-              {isAuth ? "Re-authenticate" : "Authenticate"}
+              {isAuth ? "Re-authenticate" : "Paste cookies"}
             </button>
             <button
               type="submit"

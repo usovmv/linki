@@ -10,7 +10,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const account = db.prepare("SELECT * FROM accounts WHERE id = ?").get(id);
   if (!account) return res.status(404).json({ error: "Account not found" });
 
-  const { li_at, document_cookie } = req.body as { li_at?: string; document_cookie?: string };
+  const body = req.body as { li_at?: string; document_cookie?: string; mode?: string };
+
+  // ── Browser-based login (opens visible Chrome for manual LinkedIn login) ──
+  if (body.mode === "browser") {
+    try {
+      const { authenticateAccount } = await import("@/lib/linkedin/session");
+      await authenticateAccount(id);
+      return res.json({ ok: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Browser authentication failed";
+      console.error("[authenticate] Browser auth error:", message);
+      return res.status(500).json({ error: message });
+    }
+  }
+
+  // ── Cookie-based authentication ──────────────────────────────────────────
+  const { li_at, document_cookie } = body;
   if (!li_at) return res.status(400).json({ error: "li_at cookie is required" });
 
   // Parse document.cookie string into cookie objects
