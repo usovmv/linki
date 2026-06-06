@@ -2,6 +2,7 @@ import { chromium } from "playwright-extra";
 import type { Browser, BrowserContext, Page } from "playwright";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { getDb } from "@/lib/db";
+import { spawn } from "child_process";
 
 chromium.use(StealthPlugin());
 
@@ -147,17 +148,38 @@ export async function authenticateAccount(accountId: string): Promise<void> {
   // Close any existing context for this account — start fresh
   await closeSession(accountId);
 
-  // Always launch a VISIBLE browser for manual login
-  const visibleBrowser = await chromium.launch({
-    headless: false,
-    executablePath: CHROMIUM_PATH,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-    ],
-  });
+  // Start Xvfb if no display is available (headless server)
+  let xvfbProcess: ReturnType<typeof spawn> | null = null;
+  const display = process.env.DISPLAY;
+  if (!display) {
+    const xvfbDisplay = ":99";
+    try {
+      // Kill any existing Xvfb on this display first
+      spawn("pkill", ["-f", `Xvfb ${xvfbDisplay}`]);
+      xvfbProcess = spawn("Xvfb", [xvfbDisplay, "-screen", "0", "1920x1080x24", "-ac"], {
+        stdio: "ignore",
+        detached: false,
+      });
+      process.env.DISPLAY = xvfbDisplay;
+      // Wait for Xvfb to be ready
+      await new Promise(r => setTimeout(r, 500));
+    } catch {
+      // Xvfb is not available — try without it
+    }
+  }
+
+  try {
+    // Launch a VISIBLE browser for manual login
+    const visibleBrowser = await chromium.launch({
+      headless: false,
+      executablePath: CHROMIUM_PATH,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+      ],
+    });
 
   try {
     const proxy = getProxyConfig();
@@ -195,5 +217,9 @@ export async function authenticateAccount(accountId: string): Promise<void> {
     await ctx.close();
   } finally {
     await visibleBrowser.close();
+  }
+  } finally {
+    if (xvfbProcess) { xvfbProcess.kill(); }
+    if (!display) delete process.env.DISPLAY;
   }
 }
