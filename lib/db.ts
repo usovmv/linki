@@ -3,7 +3,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { scheduleUpdateCheck } from "@/lib/update-check";
 
-const DB_PATH = process.env.LINKI_DB_PATH ?? path.join(process.cwd(), "linki.db");
+const DB_PATH = process.env.LINKI_DB_PATH || path.join(process.cwd(), "linki.db");
 
 let db: Database.Database;
 
