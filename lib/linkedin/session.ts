@@ -150,21 +150,33 @@ export async function authenticateAccount(accountId: string): Promise<void> {
 
   // Start Xvfb if no display is available (headless server)
   let xvfbProcess: ReturnType<typeof spawn> | null = null;
-  const display = process.env.DISPLAY;
-  if (!display) {
+  const hadDisplay = !!process.env.DISPLAY;
+  if (!hadDisplay) {
     const xvfbDisplay = ":99";
-    try {
-      // Kill any existing Xvfb on this display first
-      spawn("pkill", ["-f", `Xvfb ${xvfbDisplay}`]);
-      xvfbProcess = spawn("Xvfb", [xvfbDisplay, "-screen", "0", "1920x1080x24", "-ac"], {
+    const started = await new Promise<boolean>((resolve) => {
+      try {
+        spawn("pkill", ["-f", `Xvfb ${xvfbDisplay}`]);
+      } catch { /* no existing Xvfb */ }
+
+      const proc = spawn("Xvfb", [xvfbDisplay, "-screen", "0", "1920x1080x24", "-ac"], {
         stdio: "ignore",
         detached: false,
       });
-      process.env.DISPLAY = xvfbDisplay;
-      // Wait for Xvfb to be ready
-      await new Promise(r => setTimeout(r, 500));
-    } catch {
-      // Xvfb is not available — try without it
+
+      proc.on("error", () => resolve(false));
+      proc.on("spawn", () => {
+        process.env.DISPLAY = xvfbDisplay;
+        xvfbProcess = proc;
+        // Give Xvfb a moment to initialize the display
+        setTimeout(() => resolve(true), 1000);
+      });
+      // Timeout fallback
+      setTimeout(() => resolve(false), 3000);
+    });
+
+    if (!started) {
+      console.warn("[session] Xvfb failed to start — trying without display");
+      if (xvfbProcess) { xvfbProcess.kill(); xvfbProcess = null; }
     }
   }
 
@@ -220,6 +232,6 @@ export async function authenticateAccount(accountId: string): Promise<void> {
   }
   } finally {
     if (xvfbProcess) { xvfbProcess.kill(); }
-    if (!display) delete process.env.DISPLAY;
+    if (!hadDisplay) delete process.env.DISPLAY;
   }
 }
