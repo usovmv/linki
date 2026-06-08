@@ -149,7 +149,7 @@ export async function authenticateAccount(accountId: string): Promise<void> {
   await closeSession(accountId);
 
   // Start Xvfb if no display is available (headless server)
-  let xvfbProcess: ReturnType<typeof spawn> | null = null;
+  const xvfbRef: { current: ReturnType<typeof spawn> | null } = { current: null };
   const hadDisplay = !!process.env.DISPLAY;
   if (!hadDisplay) {
     const xvfbDisplay = ":99";
@@ -166,17 +166,15 @@ export async function authenticateAccount(accountId: string): Promise<void> {
       proc.on("error", () => resolve(false));
       proc.on("spawn", () => {
         process.env.DISPLAY = xvfbDisplay;
-        xvfbProcess = proc;
-        // Give Xvfb a moment to initialize the display
+        xvfbRef.current = proc;
         setTimeout(() => resolve(true), 1000);
       });
-      // Timeout fallback
       setTimeout(() => resolve(false), 3000);
     });
 
     if (!started) {
       console.warn("[session] Xvfb failed to start — trying without display");
-      if (xvfbProcess) { (xvfbProcess as ReturnType<typeof spawn>).kill(); xvfbProcess = null; }
+      if (xvfbRef.current) { xvfbRef.current.kill(); xvfbRef.current = null; }
     }
   }
 
@@ -231,7 +229,7 @@ export async function authenticateAccount(accountId: string): Promise<void> {
     await visibleBrowser.close();
   }
   } finally {
-    if (xvfbProcess) { xvfbProcess.kill(); }
+    if (xvfbRef.current) { xvfbRef.current.kill(); }
     if (!hadDisplay) delete process.env.DISPLAY;
   }
 }
