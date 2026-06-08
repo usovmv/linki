@@ -176,7 +176,7 @@ export async function authenticateAccount(accountId: string): Promise<void> {
 
     if (!started) {
       console.warn("[session] Xvfb failed to start — trying without display");
-      if (xvfbProcess) { xvfbProcess.kill(); xvfbProcess = null; }
+      if (xvfbProcess) { (xvfbProcess as ReturnType<typeof spawn>).kill(); xvfbProcess = null; }
     }
   }
 
